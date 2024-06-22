@@ -1,5 +1,4 @@
-//! Based on: https://github.com/denizzzka/ldc-external_druntime_backend/blob/external_druntime_backend_support/runtime/druntime/meson.build
-
+//! Build D runtime + std (phobos) using zig-build with ABS
 const std = @import("std");
 const ldc2 = @import("abs").ldc2;
 const builtin = @import("builtin");
@@ -24,21 +23,29 @@ pub fn build(b: *std.Build) !void {
         zigcc_options.addOption([]const u8, "triple", try target.result.linuxTriple(b.allocator));
     }
 
-    const source = switch (target.result.cpu.arch) {
+    try buildRuntime(b, .{
+        .target = target,
+        .optimize = optimize,
+        .t_options = zigcc_options,
+    });
+}
+
+fn buildRuntime(b: *std.Build, options: buildOptions) !void {
+    const source = switch (options.target.result.cpu.arch) {
         .aarch64, .arm, .aarch64_32, .aarch64_be, .armeb => &[_][]const u8{
             "druntime/src/ldc/arm_unwind.c",
-        } ++ src,
-        else => src,
+        } ++ runtime_src,
+        else => runtime_src,
     };
 
     const threadAsm = b.addStaticLibrary(.{
         .name = "threadasm",
-        .target = target,
-        .optimize = optimize,
+        .target = options.target,
+        .optimize = options.optimize,
     });
     threadAsm.addAssemblyFile(b.path("druntime/src/core/threadasm.S"));
 
-    const versions_config = switch (target.result.cpu.arch) {
+    const versions_config = switch (options.target.result.cpu.arch) {
         .aarch64, .x86_64, .x86 => &[_][]const u8{
             "AsmExternal", // used by fiber module
             "OnlyLowMemUnittest", // disables memory-greedy unittests
@@ -51,8 +58,8 @@ pub fn build(b: *std.Build) !void {
     try buildD(b, .{
         .name = "druntime",
         .kind = .lib,
-        .target = target,
-        .optimize = optimize,
+        .target = options.target,
+        .optimize = options.optimize,
         .sources = source,
         .dflags = &.{
             "-Idruntime/src",
@@ -63,7 +70,7 @@ pub fn build(b: *std.Build) !void {
         .versions = versions_config,
         .artifact = threadAsm,
         .use_zigcc = true,
-        .t_options = zigcc_options,
+        .t_options = options.t_options.?,
     });
 }
 
@@ -72,7 +79,24 @@ fn buildD(b: *std.Build, options: ldc2.DCompileStep) !void {
     b.default_step.dependOn(&exe.step);
 }
 
-const src = &[_][]const u8{
+fn buildPhobos(b: *std.Build, options: buildOptions) !void {
+    _ = b; // autofix
+    _ = options; // autofix
+    // TODO!
+}
+
+fn phobosPath(b: *std.Build) std.Build.LazyPath {
+    const phobos_depsrc = b.dependency("phobos", .{});
+    return phobos_depsrc.path("");
+}
+
+const buildOptions = struct {
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    t_options: ?*std.Build.Step.Options = null,
+};
+
+const runtime_src = &[_][]const u8{
     "druntime/src/core/bitop.d",
     "druntime/src/core/cpuid.d",
     "druntime/src/core/gc/config.d",
@@ -150,5 +174,187 @@ const src = &[_][]const u8{
     "druntime/src/rt/sections_elf_shared.d",
     "druntime/src/rt/sections_ldc.d",
     "druntime/src/rt/sections_osx_x86.d",
-    // "druntime/src/ldc/sanitizers_optionally_linked.d",
+    "druntime/src/ldc/sanitizers_optionally_linked.d",
+};
+
+const std_src = &.{
+    "phobos/etc/c/curl.d",
+    "phobos/etc/c/odbc/sql.d",
+    "phobos/etc/c/odbc/sqlext.d",
+    "phobos/etc/c/odbc/sqltypes.d",
+    "phobos/etc/c/odbc/sqlucode.d",
+    "phobos/etc/c/sqlite3.d",
+    "phobos/etc/c/zlib.d",
+    "phobos/phobos/sys/compiler.d",
+    "phobos/phobos/sys/meta.d",
+    "phobos/phobos/sys/system.d",
+    "phobos/phobos/sys/traits.d",
+    "phobos/std/algorithm/comparison.d",
+    "phobos/std/algorithm/internal.d",
+    "phobos/std/algorithm/iteration.d",
+    "phobos/std/algorithm/mutation.d",
+    "phobos/std/algorithm/package.d",
+    "phobos/std/algorithm/searching.d",
+    "phobos/std/algorithm/setops.d",
+    "phobos/std/algorithm/sorting.d",
+    "phobos/std/array.d",
+    "phobos/std/ascii.d",
+    "phobos/std/base64.d",
+    "phobos/std/bigint.d",
+    "phobos/std/bitmanip.d",
+    "phobos/std/checkedint.d",
+    "phobos/std/compiler.d",
+    "phobos/std/complex.d",
+    "phobos/std/concurrency.d",
+    "phobos/std/container/array.d",
+    "phobos/std/container/binaryheap.d",
+    "phobos/std/container/dlist.d",
+    "phobos/std/container/package.d",
+    "phobos/std/container/rbtree.d",
+    "phobos/std/container/slist.d",
+    "phobos/std/container/util.d",
+    "phobos/std/conv.d",
+    "phobos/std/csv.d",
+    "phobos/std/datetime/date.d",
+    "phobos/std/datetime/interval.d",
+    "phobos/std/datetime/package.d",
+    "phobos/std/datetime/stopwatch.d",
+    "phobos/std/datetime/systime.d",
+    "phobos/std/datetime/timezone.d",
+    "phobos/std/demangle.d",
+    "phobos/std/digest/crc.d",
+    "phobos/std/digest/hmac.d",
+    "phobos/std/digest/md.d",
+    "phobos/std/digest/murmurhash.d",
+    "phobos/std/digest/package.d",
+    "phobos/std/digest/ripemd.d",
+    "phobos/std/digest/sha.d",
+    "phobos/std/encoding.d",
+    "phobos/std/exception.d",
+    "phobos/std/experimental/allocator/building_blocks/affix_allocator.d",
+    "phobos/std/experimental/allocator/building_blocks/aligned_block_list.d",
+    "phobos/std/experimental/allocator/building_blocks/allocator_list.d",
+    "phobos/std/experimental/allocator/building_blocks/ascending_page_allocator.d",
+    "phobos/std/experimental/allocator/building_blocks/bitmapped_block.d",
+    "phobos/std/experimental/allocator/building_blocks/bucketizer.d",
+    "phobos/std/experimental/allocator/building_blocks/fallback_allocator.d",
+    "phobos/std/experimental/allocator/building_blocks/free_list.d",
+    "phobos/std/experimental/allocator/building_blocks/free_tree.d",
+    "phobos/std/experimental/allocator/building_blocks/kernighan_ritchie.d",
+    "phobos/std/experimental/allocator/building_blocks/null_allocator.d",
+    "phobos/std/experimental/allocator/building_blocks/package.d",
+    "phobos/std/experimental/allocator/building_blocks/quantizer.d",
+    "phobos/std/experimental/allocator/building_blocks/region.d",
+    "phobos/std/experimental/allocator/building_blocks/scoped_allocator.d",
+    "phobos/std/experimental/allocator/building_blocks/segregator.d",
+    "phobos/std/experimental/allocator/building_blocks/stats_collector.d",
+    "phobos/std/experimental/allocator/common.d",
+    "phobos/std/experimental/allocator/gc_allocator.d",
+    "phobos/std/experimental/allocator/mallocator.d",
+    "phobos/std/experimental/allocator/mmap_allocator.d",
+    "phobos/std/experimental/allocator/package.d",
+    "phobos/std/experimental/allocator/showcase.d",
+    "phobos/std/experimental/allocator/typed.d",
+    "phobos/std/experimental/checkedint.d",
+    "phobos/std/experimental/logger/core.d",
+    "phobos/std/experimental/logger/filelogger.d",
+    "phobos/std/experimental/logger/multilogger.d",
+    "phobos/std/experimental/logger/nulllogger.d",
+    "phobos/std/experimental/logger/package.d",
+    "phobos/std/file.d",
+    "phobos/std/format/internal/floats.d",
+    "phobos/std/format/internal/read.d",
+    "phobos/std/format/internal/write.d",
+    "phobos/std/format/package.d",
+    "phobos/std/format/read.d",
+    "phobos/std/format/spec.d",
+    "phobos/std/format/write.d",
+    "phobos/std/functional.d",
+    "phobos/std/getopt.d",
+    "phobos/std/int128.d",
+    "phobos/std/internal/attributes.d",
+    "phobos/std/internal/cstring.d",
+    "phobos/std/internal/digest/sha_SSSE3.d",
+    "phobos/std/internal/math/biguintarm.d",
+    "phobos/std/internal/math/biguintcore.d",
+    "phobos/std/internal/math/biguintnoasm.d",
+    "phobos/std/internal/math/biguintx86.d",
+    "phobos/std/internal/math/errorfunction.d",
+    "phobos/std/internal/math/gammafunction.d",
+    "phobos/std/internal/memory.d",
+    "phobos/std/internal/scopebuffer.d",
+    "phobos/std/internal/test/dummyrange.d",
+    "phobos/std/internal/test/range.d",
+    "phobos/std/internal/test/uda.d",
+    "phobos/std/internal/unicode_comp.d",
+    "phobos/std/internal/unicode_decomp.d",
+    "phobos/std/internal/unicode_grapheme.d",
+    "phobos/std/internal/unicode_norm.d",
+    "phobos/std/internal/unicode_tables.d",
+    "phobos/std/internal/windows/advapi32.d",
+    "phobos/std/json.d",
+    "phobos/std/logger/core.d",
+    "phobos/std/logger/filelogger.d",
+    "phobos/std/logger/multilogger.d",
+    "phobos/std/logger/nulllogger.d",
+    "phobos/std/logger/package.d",
+    "phobos/std/math/algebraic.d",
+    "phobos/std/math/constants.d",
+    "phobos/std/math/exponential.d",
+    "phobos/std/math/hardware.d",
+    "phobos/std/math/operations.d",
+    "phobos/std/math/package.d",
+    "phobos/std/math/remainder.d",
+    "phobos/std/math/rounding.d",
+    "phobos/std/math/traits.d",
+    "phobos/std/math/trigonometry.d",
+    "phobos/std/mathspecial.d",
+    "phobos/std/meta.d",
+    "phobos/std/mmfile.d",
+    "phobos/std/net/curl.d",
+    "phobos/std/net/isemail.d",
+    "phobos/std/numeric.d",
+    "phobos/std/outbuffer.d",
+    "phobos/std/package.d",
+    "phobos/std/parallelism.d",
+    "phobos/std/path.d",
+    "phobos/std/process.d",
+    "phobos/std/random.d",
+    "phobos/std/range/interfaces.d",
+    "phobos/std/range/package.d",
+    "phobos/std/range/primitives.d",
+    "phobos/std/regex/internal/backtracking.d",
+    "phobos/std/regex/internal/generator.d",
+    "phobos/std/regex/internal/ir.d",
+    "phobos/std/regex/internal/kickstart.d",
+    "phobos/std/regex/internal/parser.d",
+    "phobos/std/regex/internal/tests.d",
+    "phobos/std/regex/internal/tests2.d",
+    "phobos/std/regex/internal/thompson.d",
+    "phobos/std/regex/package.d",
+    "phobos/std/signals.d",
+    "phobos/std/socket.d",
+    "phobos/std/stdint.d",
+    "phobos/std/stdio.d",
+    "phobos/std/string.d",
+    "phobos/std/sumtype.d",
+    "phobos/std/system.d",
+    "phobos/std/traits.d",
+    "phobos/std/typecons.d",
+    "phobos/std/typetuple.d",
+    "phobos/std/uni/package.d",
+    "phobos/std/uri.d",
+    "phobos/std/utf.d",
+    "phobos/std/uuid.d",
+    "phobos/std/variant.d",
+    "phobos/std/windows/charset.d",
+    "phobos/std/windows/registry.d",
+    "phobos/std/windows/syserror.d",
+    "phobos/std/zip.d",
+    "phobos/std/zlib.d",
+    "phobos/test/betterc_module_tests.d",
+    "phobos/test/dub_stdx_allocator.d",
+    "phobos/test/dub_stdx_checkedint.d",
+    "phobos/tools/unicode_table_generator.d",
+    "phobos/unittest.d",
 };
