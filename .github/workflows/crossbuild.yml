@@ -15,6 +15,7 @@ jobs:
           - powerpc64le-linux-musl
           - x86-linux-musl
           - x86-windows-msvc
+          - x86_64-macos
 
 
     runs-on: ubuntu-latest

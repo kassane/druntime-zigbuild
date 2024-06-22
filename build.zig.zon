@@ -3,8 +3,8 @@
     .version = "1.39.0",
     .dependencies = .{
         .abs = .{
-            .url = "git+https://github.com/kassane/anotherBuildStep#a1f40f90f17fa6d2681f9d46cf8dbc37d4f1ea89",
-            .hash = "1220bdfcf468e77dfdca5573ba5235f1db5ad10eb8ee030360dd402d5988e6bb4e41",
+            .url = "git+https://github.com/kassane/anotherBuildStep#6a7899f5db7a02fd5e1e6494c81cf2d6b1d9362e",
+            .hash = "1220804e1fec6c3b53aafc86f89438291ab7fb0db0e98829556020541f3d68603221",
         },
         .phobos = .{
             .url = "git+https://github.com/ldc-developers/phobos#7bb24a48818d87c9ac4da030ea8d03902dbac175",
