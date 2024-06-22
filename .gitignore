@@ -1,0 +1,15 @@
+# Folders
+*zig-*/
+build/*
+bin/*
+lib/*
+
+## Files
+*.ll
+*.s
+*.S
+*.o*
+*.exe
+*.mak
+Makefile
+CMakeLists.txt

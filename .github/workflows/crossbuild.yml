@@ -1,0 +1,33 @@
+name: Zig Cross
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        targets:
+          - aarch64-linux-gnu
+          - aarch64-linux-musl
+          - riscv64-linux-musl
+          - powerpc64-linux-musl
+          - powerpc64le-linux-musl
+          - x86-linux-musl
+          - x86-windows-msvc
+
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - uses: korandoru/setup-zig@v1
+        with:
+          zig-version: master
+      - uses: dlang-community/setup-dlang@v1
+        with:
+          compiler: ldc-master
+      - name: Build Summary ${{ matrix.targets }}
+        run: zig build --summary all -freference-trace -Dtarget=${{ matrix.targets }}
