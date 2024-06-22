@@ -38,6 +38,16 @@ pub fn build(b: *std.Build) !void {
     });
     threadAsm.addAssemblyFile(b.path("druntime/src/core/threadasm.S"));
 
+    const versions_config = switch (target.result.cpu.arch) {
+        .aarch64, .x86_64, .x86 => &[_][]const u8{
+            "AsmExternal", // used by fiber module
+            "OnlyLowMemUnittest", // disables memory-greedy unittests
+        },
+        else => &[_][]const u8{
+            "OnlyLowMemUnittest", // disables memory-greedy unittests
+        },
+    };
+
     try buildD(b, .{
         .name = "druntime",
         .kind = .lib,
@@ -50,10 +60,7 @@ pub fn build(b: *std.Build) !void {
             "-conf=",
             "-defaultlib=",
         },
-        .versions = &.{
-            "AsmExternal", // used by fiber module
-            "OnlyLowMemUnittest", //disables memory-greedy unittests
-        },
+        .versions = versions_config,
         .artifact = threadAsm,
         .use_zigcc = true,
         .t_options = zigcc_options,
