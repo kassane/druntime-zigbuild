@@ -6,8 +6,6 @@ lib/*
 
 ## Files
 *.ll
-*.s
-*.S
 *.o*
 *.exe
 *.mak
