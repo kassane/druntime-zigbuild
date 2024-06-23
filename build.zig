@@ -15,19 +15,30 @@ pub fn build(b: *std.Build) !void {
     });
     const optimize = b.standardOptimizeOption(.{});
 
+    const linkMode = b.option(std.builtin.LinkMode, "linkage", "Change linking mode (default: static)") orelse .static;
+    const enable_phobos = b.option(bool, "phobos", "Build phobos library (default: false)") orelse false;
+
     // Send the triple-target to zigcc (if enabled)
     const zigcc_options = b.addOptions();
     if (target.query.isNative()) {
         zigcc_options.addOption([]const u8, "triple", b.fmt("native-native-{s}", .{@tagName(target.result.abi)}));
     } else {
-        zigcc_options.addOption([]const u8, "triple", try target.result.linuxTriple(b.allocator));
+        zigcc_options.addOption([]const u8, "triple", try target.result.zigTriple(b.allocator));
     }
 
     try buildRuntime(b, .{
         .target = target,
         .optimize = optimize,
+        .linkage = linkMode,
         .t_options = zigcc_options,
     });
+    if (enable_phobos)
+        try buildPhobos(b, .{
+            .target = target,
+            .optimize = optimize,
+            .linkage = linkMode,
+            .t_options = zigcc_options,
+        });
 }
 
 fn buildRuntime(b: *std.Build, options: buildOptions) !void {
@@ -55,17 +66,31 @@ fn buildRuntime(b: *std.Build, options: buildOptions) !void {
         },
     };
 
+    const tagLabel = switch (options.optimize) {
+        .Debug => "debug",
+        else => "release",
+    };
+    const linkMode = switch (options.linkage) {
+        .static => "static",
+        .dynamic => "shared",
+    };
     try buildD(b, .{
-        .name = "druntime",
+        .name = b.fmt("druntime-ldc-{s}-{s}", .{ linkMode, tagLabel }),
         .kind = .lib,
+        .linkage = options.linkage,
         .target = options.target,
         .optimize = options.optimize,
         .sources = source,
         .dflags = &.{
             "-Idruntime/src",
+            "-Idruntime/import",
             "-w",
+            "-de",
+            "-preview=dip1000",
+            "-preview=fieldwise",
             "-conf=",
             "-defaultlib=",
+            "-debuglib=",
         },
         .versions = versions_config,
         .artifact = threadAsm,
@@ -80,20 +105,48 @@ fn buildD(b: *std.Build, options: ldc2.DCompileStep) !void {
 }
 
 fn buildPhobos(b: *std.Build, options: buildOptions) !void {
-    _ = b; // autofix
-    _ = options; // autofix
-    // TODO!
-}
-
-fn phobosPath(b: *std.Build) std.Build.LazyPath {
-    const phobos_depsrc = b.dependency("phobos", .{});
-    return phobos_depsrc.path("");
+    const tagLabel = switch (options.optimize) {
+        .Debug => "debug",
+        else => "release",
+    };
+    const linkMode = switch (options.linkage) {
+        .static => "static",
+        .dynamic => "shared",
+    };
+    try buildD(b, .{
+        .name = b.fmt("phobos2-ldc-{s}-{s}", .{ linkMode, tagLabel }),
+        .kind = .lib,
+        .linkage = options.linkage,
+        .target = options.target,
+        .optimize = options.optimize,
+        .sources = std_src,
+        .dflags = &.{
+            "-Iphobos",
+            "-Idruntime/src",
+            "-Idruntime/import",
+            "-w",
+            "-conf=",
+            "-defaultlib=",
+            "-debuglib=",
+            "-de",
+            "-preview=dip1000",
+            "-preview=dtorfields",
+            "-preview=fieldwise",
+        },
+        .artifact = buildZlib(b, .{
+            .target = options.target,
+            .optimize = options.optimize,
+        }),
+        .use_zigcc = true,
+        .t_options = options.t_options.?,
+    });
 }
 
 const buildOptions = struct {
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     t_options: ?*std.Build.Step.Options = null,
+    linkage: std.builtin.LinkMode = .static,
 };
 
 const runtime_src = &[_][]const u8{
@@ -177,7 +230,52 @@ const runtime_src = &[_][]const u8{
     "druntime/src/ldc/sanitizers_optionally_linked.d",
 };
 
-const std_src = &.{
+fn buildZlib(b: *std.Build, options: buildOptions) *std.Build.Step.Compile {
+    const phobos_zlib_path = b.pathJoin(&.{
+        "phobos",
+        "etc",
+        "c",
+        "zlib",
+    });
+    const libz = b.addStaticLibrary(.{
+        .name = "z",
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    libz.pie = true;
+
+    libz.addIncludePath(b.path(phobos_zlib_path));
+    libz.addCSourceFiles(.{
+        .root = b.path(phobos_zlib_path),
+        .files = &.{
+            "adler32.c",
+            "crc32.c",
+            "deflate.c",
+            "infback.c",
+            "inffast.c",
+            "inflate.c",
+            "inftrees.c",
+            "trees.c",
+            "zutil.c",
+            "compress.c",
+            "uncompr.c",
+            "gzclose.c",
+            "gzlib.c",
+            "gzread.c",
+            "gzwrite.c",
+        },
+        .flags = &.{
+            "-std=c89",
+            "-Wall",
+            "-Wextra",
+            "-Wno-unused-parameter",
+        },
+    });
+    libz.linkLibC();
+    return libz;
+}
+
+const std_src = &[_][]const u8{
     "phobos/etc/c/curl.d",
     "phobos/etc/c/odbc/sql.d",
     "phobos/etc/c/odbc/sqlext.d",
@@ -352,9 +450,9 @@ const std_src = &.{
     "phobos/std/windows/syserror.d",
     "phobos/std/zip.d",
     "phobos/std/zlib.d",
-    "phobos/test/betterc_module_tests.d",
-    "phobos/test/dub_stdx_allocator.d",
-    "phobos/test/dub_stdx_checkedint.d",
+    // "phobos/test/betterc_module_tests.d",
+    // "phobos/test/dub_stdx_allocator.d",
+    // "phobos/test/dub_stdx_checkedint.d",
     "phobos/tools/unicode_table_generator.d",
-    "phobos/unittest.d",
+    // "phobos/unittest.d",
 };

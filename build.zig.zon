@@ -1,14 +1,10 @@
 .{
     .name = "druntime",
-    .version = "1.39.0",
+    .version = "1.109.0",
     .dependencies = .{
         .abs = .{
             .url = "git+https://github.com/kassane/anotherBuildStep#6a7899f5db7a02fd5e1e6494c81cf2d6b1d9362e",
             .hash = "1220804e1fec6c3b53aafc86f89438291ab7fb0db0e98829556020541f3d68603221",
-        },
-        .phobos = .{
-            .url = "git+https://github.com/ldc-developers/phobos#7bb24a48818d87c9ac4da030ea8d03902dbac175",
-            .hash = "122003b655d6bc006e1cb2d3caf78d9a265775bdb373b4ac22d4b70b052e7480a983",
         },
     },
     .paths = .{""},

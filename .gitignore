@@ -6,6 +6,9 @@ lib/*
 
 ## Files
 *.ll
+*.txt
+*.sdl
+*.json
 *.o*
 *.exe
 *.mak

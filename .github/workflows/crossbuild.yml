@@ -31,4 +31,4 @@ jobs:
         with:
           compiler: ldc-master
       - name: Build Summary ${{ matrix.targets }}
-        run: zig build --summary all -freference-trace -Dtarget=${{ matrix.targets }}
+        run: zig build -Dphobos --summary all -freference-trace -Dtarget=${{ matrix.targets }}
