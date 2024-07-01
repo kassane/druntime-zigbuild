@@ -33,27 +33,31 @@ pub fn build(b: *std.Build) !void {
 }
 
 fn buildRuntime(b: *std.Build, options: buildOptions) !void {
-    const source = switch (options.target.result.cpu.arch) {
-        .aarch64, .aarch64_32 => &[_][]const u8{
-            "druntime/src/ldc/arm_unwind.c",
-        } ++ runtime_src,
-        else => if (options.target.result.abi == .msvc)
-            runtime_src ++ &[_][]const u8{
-                "druntime/src/ldc/msvc.c",
-                "druntime/src/ldc/eh_msvc.d",
-            }
-        else
-            runtime_src,
+    const source = switch (options.target.result.os.tag) {
+        .windows => runtime_src ++ &[_][]const u8{"druntime/src/ldc/eh_msvc.d"},
+        else => runtime_src,
     };
 
-    const threadAsm = b.addStaticLibrary(.{
-        .name = "threadasm",
+    const complementary = b.addStaticLibrary(.{
+        .name = "asm",
         .target = options.target,
         .optimize = options.optimize,
     });
-    threadAsm.addIncludePath(b.path("druntime/src")); // importc.h
-    threadAsm.addAssemblyFile(b.path("druntime/src/core/threadasm.S"));
-    threadAsm.addAssemblyFile(b.path("druntime/src/ldc/eh_asm.S"));
+    complementary.addIncludePath(b.path("druntime/src")); // importc.h
+    complementary.addAssemblyFile(b.path("druntime/src/core/threadasm.S"));
+    complementary.addAssemblyFile(b.path("druntime/src/ldc/eh_asm.S"));
+    if (options.target.result.abi == .msvc) {
+        complementary.addCSourceFile(.{
+            .file = b.path("druntime/src/ldc/msvc.c"),
+        });
+        complementary.linkLibC();
+    }
+    if (options.target.result.cpu.arch.isAARCH64()) {
+        complementary.addCSourceFile(.{
+            .file = b.path("druntime/src/ldc/arm_unwind.c"),
+        });
+        complementary.linkLibC();
+    }
 
     const versions_config = switch (options.target.result.cpu.arch) {
         .aarch64, .x86_64, .x86 => &[_][]const u8{
@@ -87,13 +91,14 @@ fn buildRuntime(b: *std.Build, options: buildOptions) !void {
             "-w",
             "-de",
             "-preview=dip1000",
+            "-preview=dtorfields",
             "-preview=fieldwise",
             "-conf=",
             "-defaultlib=",
             "-debuglib=",
         },
         .versions = versions_config,
-        .artifact = threadAsm,
+        .artifact = complementary,
         .use_zigcc = true,
         .t_options = try zcc.buildOptions(b, options.target),
     });
