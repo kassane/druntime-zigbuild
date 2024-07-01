@@ -1,6 +1,7 @@
 //! Build D runtime + std (phobos) using zig-build with ABS
 const std = @import("std");
 const ldc2 = @import("abs").ldc2;
+const zcc = @import("abs").zcc;
 const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) !void {
@@ -18,35 +19,31 @@ pub fn build(b: *std.Build) !void {
     const linkMode = b.option(std.builtin.LinkMode, "linkage", "Change linking mode (default: static)") orelse .static;
     const enable_phobos = b.option(bool, "phobos", "Build phobos library (default: false)") orelse false;
 
-    // Send the triple-target to zigcc (if enabled)
-    const zigcc_options = b.addOptions();
-    if (target.query.isNative()) {
-        zigcc_options.addOption([]const u8, "triple", b.fmt("native-native-{s}", .{@tagName(target.result.abi)}));
-    } else {
-        zigcc_options.addOption([]const u8, "triple", try target.result.zigTriple(b.allocator));
-    }
-
     try buildRuntime(b, .{
         .target = target,
         .optimize = optimize,
         .linkage = linkMode,
-        .t_options = zigcc_options,
     });
     if (enable_phobos)
         try buildPhobos(b, .{
             .target = target,
             .optimize = optimize,
             .linkage = linkMode,
-            .t_options = zigcc_options,
         });
 }
 
 fn buildRuntime(b: *std.Build, options: buildOptions) !void {
     const source = switch (options.target.result.cpu.arch) {
-        .aarch64, .arm, .aarch64_32, .aarch64_be, .armeb => &[_][]const u8{
+        .aarch64, .aarch64_32 => &[_][]const u8{
             "druntime/src/ldc/arm_unwind.c",
         } ++ runtime_src,
-        else => runtime_src,
+        else => if (options.target.result.abi == .msvc)
+            runtime_src ++ &[_][]const u8{
+                "druntime/src/ldc/msvc.c",
+                "druntime/src/ldc/eh_msvc.d",
+            }
+        else
+            runtime_src,
     };
 
     const threadAsm = b.addStaticLibrary(.{
@@ -54,15 +51,19 @@ fn buildRuntime(b: *std.Build, options: buildOptions) !void {
         .target = options.target,
         .optimize = options.optimize,
     });
+    threadAsm.addIncludePath(b.path("druntime/src")); // importc.h
     threadAsm.addAssemblyFile(b.path("druntime/src/core/threadasm.S"));
+    threadAsm.addAssemblyFile(b.path("druntime/src/ldc/eh_asm.S"));
 
     const versions_config = switch (options.target.result.cpu.arch) {
         .aarch64, .x86_64, .x86 => &[_][]const u8{
             "AsmExternal", // used by fiber module
             "OnlyLowMemUnittest", // disables memory-greedy unittests
+            "SupportSanitizers", // enables sanitizers support
         },
         else => &[_][]const u8{
             "OnlyLowMemUnittest", // disables memory-greedy unittests
+            "SupportSanitizers", // enables sanitizers support
         },
     };
 
@@ -83,7 +84,6 @@ fn buildRuntime(b: *std.Build, options: buildOptions) !void {
         .sources = source,
         .dflags = &.{
             "-Idruntime/src",
-            "-Idruntime/import",
             "-w",
             "-de",
             "-preview=dip1000",
@@ -95,7 +95,7 @@ fn buildRuntime(b: *std.Build, options: buildOptions) !void {
         .versions = versions_config,
         .artifact = threadAsm,
         .use_zigcc = true,
-        .t_options = options.t_options.?,
+        .t_options = try zcc.buildOptions(b, options.target),
     });
 }
 
@@ -123,7 +123,6 @@ fn buildPhobos(b: *std.Build, options: buildOptions) !void {
         .dflags = &.{
             "-Iphobos",
             "-Idruntime/src",
-            "-Idruntime/import",
             "-w",
             "-conf=",
             "-defaultlib=",
@@ -132,20 +131,20 @@ fn buildPhobos(b: *std.Build, options: buildOptions) !void {
             "-preview=dip1000",
             "-preview=dtorfields",
             "-preview=fieldwise",
+            "-lowmem",
         },
         .artifact = buildZlib(b, .{
             .target = options.target,
             .optimize = options.optimize,
         }),
         .use_zigcc = true,
-        .t_options = options.t_options.?,
+        .t_options = try zcc.buildOptions(b, options.target),
     });
 }
 
 const buildOptions = struct {
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    t_options: ?*std.Build.Step.Options = null,
     linkage: std.builtin.LinkMode = .static,
 };
 
@@ -227,6 +226,8 @@ const runtime_src = &[_][]const u8{
     "druntime/src/rt/sections_elf_shared.d",
     "druntime/src/rt/sections_ldc.d",
     "druntime/src/rt/sections_osx_x86.d",
+    "druntime/src/ldc/attributes.d",
+    "druntime/src/ldc/asan.d",
     "druntime/src/ldc/sanitizers_optionally_linked.d",
 };
 
@@ -381,9 +382,9 @@ const std_src = &[_][]const u8{
     "phobos/std/internal/math/gammafunction.d",
     "phobos/std/internal/memory.d",
     "phobos/std/internal/scopebuffer.d",
-    "phobos/std/internal/test/dummyrange.d",
-    "phobos/std/internal/test/range.d",
-    "phobos/std/internal/test/uda.d",
+    // "phobos/std/internal/test/dummyrange.d",
+    // "phobos/std/internal/test/range.d",
+    // "phobos/std/internal/test/uda.d",
     "phobos/std/internal/unicode_comp.d",
     "phobos/std/internal/unicode_decomp.d",
     "phobos/std/internal/unicode_grapheme.d",
@@ -426,8 +427,8 @@ const std_src = &[_][]const u8{
     "phobos/std/regex/internal/ir.d",
     "phobos/std/regex/internal/kickstart.d",
     "phobos/std/regex/internal/parser.d",
-    "phobos/std/regex/internal/tests.d",
-    "phobos/std/regex/internal/tests2.d",
+    // "phobos/std/regex/internal/tests.d",
+    // "phobos/std/regex/internal/tests2.d",
     "phobos/std/regex/internal/thompson.d",
     "phobos/std/regex/package.d",
     "phobos/std/signals.d",

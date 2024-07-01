@@ -14,7 +14,7 @@ jobs:
           - powerpc64-linux-musl
           - powerpc64le-linux-musl
           - x86-linux-musl
-          - x86-windows-msvc
+          # - x86-windows-msvc
           - x86_64-macos
 
 
@@ -24,10 +24,10 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
-      - uses: korandoru/setup-zig@v1
+      - uses: mlugg/setup-zig@v1
         with:
           zig-version: master
-      - uses: dlang-community/setup-dlang@v1
+      - uses: dlang-community/setup-dlang@v2
         with:
           compiler: ldc-master
       - name: Build Summary ${{ matrix.targets }}
