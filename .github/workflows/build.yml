@@ -18,4 +18,4 @@ jobs:
         with:
           compiler: ldc-master
       - name: Build Summary
-        run: zig build -Dphobos --summary all -freference-trace
+        run: zig build -Dlinkage=dynamic -Dphobos --summary all -freference-trace
