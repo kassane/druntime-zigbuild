@@ -27,11 +27,15 @@
  */
 module core.internal.backtrace.libunwind;
 
-version (DRuntime_Use_Libunwind)  :  // Libunwind supports Windows as well, but we currently use a different
-// mechanism for Windows, so the bindings haven't been brought in yet.
-version (Posix)  : import core.stdc.inttypes;
+version (DRuntime_Use_Libunwind):
 
-extern (C):
+// Libunwind supports Windows as well, but we currently use a different
+// mechanism for Windows, so the bindings haven't been brought in yet.
+version (Posix):
+
+import core.stdc.inttypes;
+
+extern(C):
 @nogc:
 nothrow:
 
@@ -56,21 +60,21 @@ struct unw_cursor_t
 ///
 struct unw_proc_info_t
 {
-    unw_word_t start_ip; /* start address of function */
-    unw_word_t end_ip; /* address after end of function */
-    unw_word_t lsda; /* address of language specific data area, */
+    unw_word_t  start_ip;         /* start address of function */
+    unw_word_t  end_ip;           /* address after end of function */
+    unw_word_t  lsda;             /* address of language specific data area, */
     /*  or zero if not used */
-    unw_word_t handler; /* personality routine, or zero if not used */
-    unw_word_t gp; /* not used */
-    unw_word_t flags; /* not used */
-    uint format; /* compact unwind encoding, or zero if none */
-    uint unwind_info_size; /* size of DWARF unwind info, or zero if none */
+    unw_word_t  handler;          /* personality routine, or zero if not used */
+    unw_word_t  gp;               /* not used */
+    unw_word_t  flags;            /* not used */
+    uint        format;           /* compact unwind encoding, or zero if none */
+    uint        unwind_info_size; /* size of DWARF unwind info, or zero if none */
     // Note: It's a `void*` with LLVM and a `unw_word_t` with upstream
-    unw_word_t unwind_info; /* address of DWARF unwind info, or zero */
+    unw_word_t  unwind_info;      /* address of DWARF unwind info, or zero */
     // Note: upstream might not have this member at all, or it might be a single
     // byte, however we never pass an array of this type, so this is safe to
     // just use the bigger (LLVM's) value.
-    unw_word_t extra; /* mach_header of mach-o image containing func */
+    unw_word_t  extra;            /* mach_header of mach-o image containing func */
 }
 
 /// Initialize the context at the current call site
@@ -113,12 +117,10 @@ else version (X86_64)
     version (Win64)
     {
         enum _LIBUNWIND_CONTEXT_SIZE = 54;
-        // #    ifdef __SEH__
-        // #      define _LIBUNWIND_CURSOR_SIZE 204
+// #    ifdef __SEH__
+// #      define _LIBUNWIND_CURSOR_SIZE 204
         enum _LIBUNWIND_CURSOR_SIZE = 66;
-    }
-    else
-    {
+    } else {
         enum _LIBUNWIND_CONTEXT_SIZE = 21;
         enum _LIBUNWIND_CURSOR_SIZE = 33;
     }
@@ -136,18 +138,18 @@ else version (PPC)
 else version (AArch64)
 {
     enum _LIBUNWIND_CONTEXT_SIZE = 66;
-    // #  if defined(__SEH__)
-    // #    define _LIBUNWIND_CURSOR_SIZE 164
+// #  if defined(__SEH__)
+// #    define _LIBUNWIND_CURSOR_SIZE 164
     enum _LIBUNWIND_CURSOR_SIZE = 78;
 }
 else version (ARM)
 {
-    // #  if defined(__SEH__)
-    // #    define _LIBUNWIND_CONTEXT_SIZE 42
-    // #    define _LIBUNWIND_CURSOR_SIZE 80
-    // #  elif defined(__ARM_WMMX)
-    // #    define _LIBUNWIND_CONTEXT_SIZE 61
-    // #    define _LIBUNWIND_CURSOR_SIZE 68
+// #  if defined(__SEH__)
+// #    define _LIBUNWIND_CONTEXT_SIZE 42
+// #    define _LIBUNWIND_CURSOR_SIZE 80
+// #  elif defined(__ARM_WMMX)
+// #    define _LIBUNWIND_CONTEXT_SIZE 61
+// #    define _LIBUNWIND_CURSOR_SIZE 68
     enum _LIBUNWIND_CONTEXT_SIZE = 42;
     enum _LIBUNWIND_CURSOR_SIZE = 49;
 }

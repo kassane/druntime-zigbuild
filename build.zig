@@ -34,7 +34,10 @@ pub fn build(b: *std.Build) !void {
 
 fn buildRuntime(b: *std.Build, options: buildOptions) !void {
     const source = switch (options.target.result.os.tag) {
-        .windows => runtime_src ++ &[_][]const u8{"druntime/src/ldc/eh_msvc.d"},
+        .windows => runtime_src ++ &[_][]const u8{
+            "druntime/src/ldc/eh_msvc.d",
+            "druntime/src/ldc/msvc.c",
+        },
         else => runtime_src,
     };
 
@@ -43,15 +46,8 @@ fn buildRuntime(b: *std.Build, options: buildOptions) !void {
         .target = options.target,
         .optimize = options.optimize,
     });
-    complementary.addIncludePath(b.path("druntime/src")); // importc.h
     complementary.addAssemblyFile(b.path("druntime/src/core/threadasm.S"));
     complementary.addAssemblyFile(b.path("druntime/src/ldc/eh_asm.S"));
-    if (options.target.result.abi == .msvc) {
-        complementary.addCSourceFile(.{
-            .file = b.path("druntime/src/ldc/msvc.c"),
-        });
-        complementary.linkLibC();
-    }
     if (options.target.result.cpu.arch.isAARCH64()) {
         complementary.addCSourceFile(.{
             .file = b.path("druntime/src/ldc/arm_unwind.c"),
@@ -72,22 +68,24 @@ fn buildRuntime(b: *std.Build, options: buildOptions) !void {
     };
 
     const tagLabel = switch (options.optimize) {
-        .Debug => "debug",
-        else => "release",
+        .Debug => "-debug",
+        else => "",
     };
     const linkMode = switch (options.linkage) {
-        .static => "static",
-        .dynamic => "shared",
+        .static => "-static",
+        .dynamic => "-shared",
     };
     try buildD(b, .{
-        .name = b.fmt("druntime-ldc-{s}-{s}", .{ linkMode, tagLabel }),
+        .name = b.fmt("druntime-ldc{s}{s}", .{
+            tagLabel,
+            linkMode,
+        }),
         .kind = .lib,
         .linkage = options.linkage,
         .target = options.target,
         .optimize = options.optimize,
         .sources = source,
         .dflags = &.{
-            "-Idruntime/src",
             "-w",
             "-de",
             "-preview=dip1000",
@@ -96,6 +94,12 @@ fn buildRuntime(b: *std.Build, options: buildOptions) !void {
             "-conf=",
             "-defaultlib=",
             "-debuglib=",
+        },
+        .importPaths = &.{
+            "druntime/src",
+        },
+        .cIncludePaths = &.{
+            "druntime/src", // importc header
         },
         .versions = versions_config,
         .artifact = complementary,
@@ -111,23 +115,24 @@ fn buildD(b: *std.Build, options: ldc2.DCompileStep) !void {
 
 fn buildPhobos(b: *std.Build, options: buildOptions) !void {
     const tagLabel = switch (options.optimize) {
-        .Debug => "debug",
-        else => "release",
+        .Debug => "-debug",
+        else => "",
     };
     const linkMode = switch (options.linkage) {
-        .static => "static",
-        .dynamic => "shared",
+        .static => "-static",
+        .dynamic => "-shared",
     };
     try buildD(b, .{
-        .name = b.fmt("phobos2-ldc-{s}-{s}", .{ linkMode, tagLabel }),
+        .name = b.fmt("phobos2-ldc{s}{s}", .{
+            tagLabel,
+            linkMode,
+        }),
         .kind = .lib,
         .linkage = options.linkage,
         .target = options.target,
         .optimize = options.optimize,
         .sources = std_src,
         .dflags = &.{
-            "-Iphobos",
-            "-Idruntime/src",
             "-w",
             "-conf=",
             "-defaultlib=",
@@ -137,6 +142,10 @@ fn buildPhobos(b: *std.Build, options: buildOptions) !void {
             "-preview=dtorfields",
             "-preview=fieldwise",
             "-lowmem",
+        },
+        .importPaths = &.{
+            "phobos",
+            "druntime/src",
         },
         .artifact = buildZlib(b, .{
             .target = options.target,
