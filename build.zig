@@ -105,7 +105,7 @@ fn buildRuntime(b: *std.Build, options: buildOptions) !void {
         .versions = versions_config,
         .artifact = complementary,
         .use_zigcc = true,
-        .t_options = try zcc.buildOptions(b, options.target),
+        .zcc_options = try zcc.buildOptions(b, options.target),
     });
 }
 
@@ -334,7 +334,7 @@ fn buildPhobos(b: *std.Build, options: buildOptions) !void {
         },
         .artifact = buildZlib(b, options),
         .use_zigcc = true,
-        .t_options = try zcc.buildOptions(b, options.target),
+        .zcc_options = try zcc.buildOptions(b, options.target),
     });
 }
 
